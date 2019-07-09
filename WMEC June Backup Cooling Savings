@@ -1,0 +1,456 @@
+clear all
+
+
+# In[50]:
+
+
+# Universal Constants
+g = 9.81
+
+from math import *
+from math import pi
+import math as math
+import pickle
+import numpy as np
+import pandas as pd
+from devtools.convert import influx_to_dataframe
+from pathlib import Path
+import pytz
+from datetime import datetime
+import numbers
+
+import time
+
+from scipy.optimize import curve_fit
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+import matplotlib
+import matplotlib.pyplot as plt
+import axpac.cpl as cpl
+matplotlib.style.use('ggplot')
+matplotlib.rcParams['figure.figsize'] = 8, 6
+from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
+                               AutoMinorLocator)
+
+from CoolProp.CoolProp import PropsSI
+
+import warnings
+
+#Set up variables
+rb_thermal_offset1 = 0
+rb_thermal_offset2 = 0
+crs_baseline1 = 0
+crs_baseline2 = 0
+day1_off = 0
+day1_crs = 0
+day1_time = 0
+
+day2_off = 0
+day2_crs = 0
+day2_time = 0
+
+day3_off = 0
+day3_crs = 0
+day3_time = 0
+
+day4_off = 0
+day4_crs = 0
+day4_time = 0
+
+day5_off = 0
+day5_crs = 0
+day5_time = 0
+
+day6_off = 0
+day6_crs = 0
+day6_time = 0
+
+day7_off = 0
+day7_crs = 0
+day7_time = 0
+
+day8_off = 0
+day8_crs = 0
+day8_time = 0
+
+day9_off = 0
+day9_crs = 0
+day9_time = 0
+
+day10_off = 0
+day10_crs = 0
+day10_time = 0
+
+CMP4_off = 52
+CMP3_off = 50
+CMP4 = 30.5
+CMP3 = 32.2
+CMP4_2 = 22
+
+
+# In[51]:
+
+
+### Load Data
+import numpy
+import csv
+import pandas
+import pytz
+from devtools import convert
+with open('building_load_data3.pickle', 'rb') as fh:
+    load = pickle.load(fh)
+    load_df = influx_to_dataframe(load)
+    #load_df = load_df.dropna()
+
+
+# In[52]:
+
+
+#manually finding start and end times of failures
+print(load_df['crs.baseline.power.kW'].index[13812])
+print(load_df['crs.baseline.power.kW'].index[23500])
+print(load_df['crs.baseline.power.kW'].index[27334])
+print(load_df['crs.baseline.power.kW'].index[27862])
+print(load_df['crs.baseline.power.kW'].index[28591])
+print(load_df['crs.baseline.power.kW'].index[29316])
+
+
+# In[53]:
+
+
+#manually finding start and end times of days
+print(load_df['crs.baseline.power.kW'].index[14172])
+print(load_df['crs.baseline.power.kW'].index[15612])
+print(load_df['crs.baseline.power.kW'].index[17042])
+print(load_df['crs.baseline.power.kW'].index[18482])
+print(load_df['crs.baseline.power.kW'].index[19922])
+print(load_df['crs.baseline.power.kW'].index[21362])
+print(load_df['crs.baseline.power.kW'].index[22801])
+print(load_df['crs.baseline.power.kW'].index[28506])
+
+
+# In[54]:
+
+
+def is_number(s):
+    try:
+        if str(s).lower() != "nan":
+            float(s)
+            return True
+    except ValueError:
+        pass
+    return False
+
+
+# In[55]:
+
+
+pd.set_option('display.max_columns', None)
+load_df
+
+
+# ## Calculate DCHG Down Time Per Event [Analysis-68]
+
+# In[56]:
+
+
+###sum up days (WMEC DCHG starts at 06:45 and ends at 21:00)
+# event 1 started 06/12/19 at 15:00 and ended 06/19/19 at 08:38
+event1_time = (21-15)+14.25+14.25+14.25+14.25+14.25+14.25+(8.633-6.75)
+day1_eff_time = 21-15-2
+day2_eff_time = 12.25
+day3_eff_time = 12.25
+day4_eff_time = 12.25
+day5_eff_time = 12.25
+day6_eff_time = 12.25
+day7_eff_time = 12.25
+day8_eff_time = 0
+#event 2 started at 06/22/19 at 01:28 and ended 06/23/19 at 10:30
+event2_time = 14.25+(10.5-6.75)
+day9_eff_time = 12.25
+day10_eff_time = 10.5-6.75-2
+
+
+# ## Sum up thermal offset and baseline power totals
+
+# In[57]:
+
+
+### Sum up DCHG Values for RB Offset and CRS Baseline
+#need to adjust for perfest re-run
+for i in range(13812,23500): #event 1
+    if load_df['rbCur_num'].values[i] == -1:
+        if is_number(load_df['rb.thermal_load.kW'].values[i]) and is_number(load_df['crs.baseline.power.kW'].values[i]):
+            rb_thermal_offset1 = rb_thermal_offset1+load_df['rb.thermal_load.kW'].values[i]
+            crs_baseline1 = crs_baseline1+load_df['crs.baseline.power.kW'].values[i]
+            if abs(load_df['crs.offset.rackB.power.kW'].values[i]) > CMP4:
+                rackB_offset = -CMP4
+            else:
+                rackB_offset = load_df['crs.offset.rackB.power.kW'].values[i]
+                
+                
+            if i < 14172 and rackB_offset < 0:
+                day1_off = day1_off+rackB_offset
+                day1_crs = day1_crs+load_df['crs.baseline.power.kW'].values[i]
+                day1_time = day1_time+1.0#mins
+            elif i < 15612 and rackB_offset < 0:
+                day2_off = day2_off+rackB_offset
+                day2_crs = day2_crs+load_df['crs.baseline.power.kW'].values[i]
+                day2_time = day2_time+1.0#mins
+            elif i < 17042 and rackB_offset < 0:
+                day3_off = day3_off+rackB_offset
+                day3_crs = day3_crs+load_df['crs.baseline.power.kW'].values[i]
+                day3_time = day3_time+1#mins
+            elif i < 18482 and rackB_offset < 0:
+                day4_off = day4_off+rackB_offset
+                day4_crs = day4_crs+load_df['crs.baseline.power.kW'].values[i]
+                day4_time = day4_time+1#mins
+            elif i < 19922 and rackB_offset < 0:
+                day5_off = day5_off+rackB_offset
+                day5_crs = day5_crs+load_df['crs.baseline.power.kW'].values[i]
+                day5_time = day5_time+1#mins
+            elif i < 21362 and rackB_offset < 0:
+                day6_off = day6_off+rackB_offset
+                day6_crs = day6_crs+load_df['crs.baseline.power.kW'].values[i]
+                day6_time = day6_time+1#mins
+            elif i < 22801 and rackB_offset < 0:
+                day7_off = day7_off+rackB_offset
+                day7_crs = day7_crs+load_df['crs.baseline.power.kW'].values[i]
+                day7_time = day7_time+1#mins
+for j in range(27334,29316):#event 2
+    if load_df['rbCur_num'].values[j] == -1:
+        
+        if abs(load_df['crs.offset.rackB.power.kW'].values[j]) > CMP3:
+            rackB_offset = -CMP3
+        else:
+            rackB_offset = load_df['crs.offset.rackB.power.kW'].values[j]
+        if is_number(load_df['crs.baseline.thermal_load.kW'].values[j]) and j < 28506:
+            rackB_offset = load_df['crs.offset.rackB.power.kW'].values[j]
+            if j>27862 and j<28591:#subtracting out effect of CMP4
+                if is_number(load_df['crs.baseline.power.kW'].values[j]):
+                    if (rackB_offset+CMP4) < 0:
+                        if abs(rackB_offset+CMP4) > CMP3:
+                            rackB_offset = -CMP3
+                        else:
+                            rackB_offset = rackB_offset+CMP4
+                        day9_off = day9_off+rackB_offset
+                        day9_crs = day9_crs+load_df['crs.baseline.power.kW'].values[j]
+                        day9_time = day9_time+1#mins
+
+            else:
+                if abs(load_df['crs.offset.rackB.power.kW'].values[j]) > CMP3:
+                    rackB_offset = -CMP3
+                else:
+                    rackB_offset = load_df['crs.offset.rackB.power.kW'].values[j]
+                if (rackB_offset) < 0:
+                    day9_off = day9_off+rackB_offset
+                    day9_crs = day9_crs+load_df['crs.baseline.power.kW'].values[j]
+                    day9_time = day9_time+1#mins
+        else:
+            if abs(load_df['crs.offset.rackB.power.kW'].values[j]) > CMP3:
+                rackB_offset = -CMP3
+            else:
+                rackB_offset = load_df['crs.offset.rackB.power.kW'].values[j]
+            if is_number(load_df['crs.baseline.thermal_load.kW'].values[j]):
+                if rackB_offset < 0:
+                    day10_off = day10_off+rackB_offset
+                    day10_crs = day10_crs+load_df['crs.baseline.power.kW'].values[j]
+                    day10_time = day10_time+1 #mins
+                
+
+
+# In[58]:
+
+
+#Adjust time variables
+day1_hours = day1_time/60
+day1_hours_eff = day1_hours-2
+day2_hours = day2_time/60
+day2_hours_eff = day2_hours-2
+day3_hours = day3_time/60
+day3_hours_eff = day3_hours-2
+day4_hours = day4_time/60
+day4_hours_eff = day4_hours-2
+day5_hours = day5_time/60
+day5_hours_eff = day5_hours-2
+day6_hours = day6_time/60
+day6_hours_eff = day6_hours-2
+day7_hours = day7_time/60
+day7_hours_eff = day7_hours-2
+day9_hours = day9_time/60
+day9_hours_eff = day9_hours-2
+day10_hours = day10_time/60
+day10_hours_eff = day10_hours-2
+
+
+# In[59]:
+
+
+###If there are not enough hours of backup cooling to result in savings, set all variables to ensure 0 calculation (and avoid dividing by 0)
+if day1_hours <= 0:
+    day1_hours_eff = 1
+    day1_off = 0
+    day1_crs = 1
+    print(1)
+if day2_hours <= 0:
+    day2_hours_eff = 1
+    day2_off = 0
+    day2_crs = 1
+    print(2)
+if day3_hours <= 0:
+    day3_hours_eff = 1
+    day3_off = 0
+    day3_crs = 1
+    print(3)
+if day4_hours <= 0:
+    day4_hours = 1
+    day4_off = 0
+    day4_crs = 1
+    print(4)
+if day5_hours <= 0:
+    day5_hours_eff = 1
+    day5_off = 0
+    day5_crs = 1
+    print(5)
+if day6_hours <= 0:
+    day6_hours_eff = 1
+    day6_off = 0
+    day6_crs = 1
+    print(6)
+if day7_hours <= 0:
+    day7_hours_eff = 1
+    day7_off = 0
+    day7_crs = 1
+    print(7)
+if day9_hours <= 0:
+    day9_hours_eff = 1
+    day9_off = 0
+    day9_crs = 1
+    print(9)
+if day10_hours <= 0:
+    day10_hours_eff = 1
+    day10_off = 0
+    day10_crs = 1
+    print(10)
+
+
+# In[60]:
+
+
+day1_percent = abs(day1_off)/day1_crs
+day2_percent = abs(day2_off)/day2_crs
+day3_percent = abs(day3_off)/day3_crs
+day4_percent = abs(day4_off)/day4_crs
+day5_percent = abs(day5_off)/day5_crs
+day6_percent = abs(day6_off)/day6_crs
+day7_percent = abs(day7_off)/day7_crs
+#day8_percent = abs(day8_off)/day8_crs
+day9_percent = abs(day9_off)/day9_crs
+day10_percent = abs(day10_off)/day10_crs
+
+
+# In[ ]:
+
+
+
+
+
+# In[61]:
+
+
+day1_savings = day1_hours_eff*day1_percent*5000
+day2_savings = day2_hours_eff*day2_percent*5000
+day3_savings = day3_hours_eff*day3_percent*5000
+day4_savings = day4_hours_eff*day4_percent*5000
+day5_savings = day5_hours_eff*day5_percent*5000
+day6_savings = day6_hours_eff*day6_percent*5000
+day7_savings = day7_hours_eff*day7_percent*5000
+#day8_savings = day8_hours_eff*day8_percent*5000
+day9_savings = day9_hours_eff*day9_percent*5000
+day10_savings = day10_hours_eff*day10_percent*5000
+
+
+# In[62]:
+
+
+print('Day 1 Savings:', day1_savings)
+print('Day 2 Savings:', day2_savings)
+print('Day 3 Savings:', day3_savings)
+print('Day 4 Savings:', day4_savings)
+print('Day 5 Savings:', day5_savings)
+print('Day 6 Savings:', day6_savings)
+print('Day 7 Savings:', day7_savings)
+print('Day 8 Savings:', 0.0)
+print('Day 9 Savings:', day9_savings)
+print('Day 10 Savings:', day10_savings)
+print('Total Savings:', day1_savings+day2_savings+day3_savings+day4_savings+day5_savings+day6_savings+day7_savings+day9_savings+day10_savings)
+
+
+# In[63]:
+
+
+print('Day 1 Time:', day1_hours)
+print('Day 2 Time:', day2_hours)
+print('Day 3 Time:', day3_hours)
+print('Day 4 Time:', day4_hours)
+print('Day 5 Time:', day5_hours)
+print('Day 6 Time:', day6_hours)
+print('Day 7 Time:', day7_hours)
+print('Day 8 Time:', 0.0)
+print('Day 9 Time:', day9_hours)
+print('Day 10 Time:', day10_hours)
+
+
+# In[64]:
+
+
+print('Day 1 Percent:', day1_percent)
+print('Day 2 Percent:', day2_percent)
+print('Day 3 Percent:', day3_percent)
+print('Day 4 Percent:', day4_percent)
+print('Day 5 Percent:', day5_percent)
+print('Day 6 Percent:', day6_percent)
+print('Day 7 Percent:', day7_percent)
+print('Day 8 Percent:', 0.0)
+print('Day 9 Percent:', day9_percent)
+print('Day 10 Percent:', day10_percent)
+
+
+# In[ ]:
+
+
+
+
+
+# In[33]:
+
+
+#rb heat transfer during failure 1
+#plt.plot(load_df['rb.thermal_load.kW'].values[1514:11192])
+
+
+# In[79]:
+
+
+#rb heat transfer during period 2
+#plt.plot(load_df['rb.thermal_load.kW'].values[15026:17008])
+
+
+# In[80]:
+
+
+#crs baseline over June Period
+plt.plot(load_df['crs.baseline.actual.kW'].values)
+
+
+# In[81]:
+
+
+plt.plot(load_df['crs.offset.rackB.power.kW'].values+load_df['crs.offset.rackA.power.kW'].values)
+
+
+# In[ ]:
+
+
+
+
